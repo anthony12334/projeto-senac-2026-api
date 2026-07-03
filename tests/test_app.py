@@ -8,11 +8,11 @@ from viajei_api.schemas.user import UserPublic
 def test_create_user(client):
 
     response = client.post(
-        '/users/',
+        '/users',
         json={
             'email': 'joao@test.com',
             'password': 'senha123',
-        }
+        },
     )
 
     assert response.status_code == HTTPStatus.CREATED
@@ -44,6 +44,17 @@ def test_delete_user(client):
 
     response.status_code == HTTPStatus.OK
     response.json() == {'menssage': 'user deleted'}
+
+
+def test_get_token(client, user):
+    response = client.post('/auth',
+        data={"username": user.email, "password": user.clean_passwd}
+    )
+    token = response.json()
+
+    assert response.status_code == HTTPStatus.OK
+    assert 'access_token' in token
+    assert 'token_type' in token
 
 
 # def test_ver_user_erro404(client):
