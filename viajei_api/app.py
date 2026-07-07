@@ -1,23 +1,39 @@
 from http import HTTPStatus
 
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from viajei_api.database import get_session
-from viajei_api.models import User
+from viajei_api.models import Story, User
 from viajei_api.schemas.message import Message
+from viajei_api.schemas.story import StoryPublic, StorySchema
 from viajei_api.schemas.user import UserList, UserPublic, UserSchema
 from viajei_api.security import (
-    create_token_access,
+    create_token,
+    get_current_user,
     get_password_hash,
-    verify_paasword,
+    verify_password,
 )
 
 app = FastAPI()
 
-database = []
+
+origins = [
+    'http://localhost:3000',
+    'htpp://127.0.0.1:3000',
+    'http://localhost:5000',
+    'htpp://127.0.0.1:5000',
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
 
 
 @app.get('/')
@@ -31,9 +47,8 @@ def create_user(user: UserSchema, session: Session = Depends(get_session)):
     db_user = session.scalar(select(User).where((User.email == user.email)))
 
     if db_user:
-        raise HTTPException(
-            status_code=HTTPStatus.CONFLICT, detail='Email já existe'
-        )
+        raise HTTPException(HTTPStatus.CONFLICT, detail='Esse email já existe')
+
     hashed_password = get_password_hash(user.password)
 
     db_user = User(email=user.email, password=hashed_password)
@@ -45,13 +60,13 @@ def create_user(user: UserSchema, session: Session = Depends(get_session)):
     return db_user
 
 
-@app.get('/users/', response_model=UserList)
+@app.get('/users', response_model=UserList)
 def read_users(
-    skip: int = 0, limit: int = 100, Session: Session = Depends(get_session)
+    skip: int = 0, limit: int = 100, session: Session = Depends(get_session)
 ):
-    users = Session.scalars(select(User).offset(skip).limit(limit)).all()
+
+    users = session.scalars(select(User).offset(skip).limit(limit)).all()
     return {'users': users}
-    return {'users': database}
 
 
 @app.delete('/users/{user_id}', response_model=Message)
@@ -60,48 +75,54 @@ def delete_user(user_id: int, session: Session = Depends(get_session)):
 
     if not db_user:
         raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND, detail='user not founf'
-        )
-
-    if user_id > len(database) or user_id < 1:
-        raise HTTPException(
             status_code=HTTPStatus.NOT_FOUND, detail='User not found!'
         )
 
     session.delete(db_user)
     session.commit()
 
-    return {'message': 'user deleted'}
-
-
-@app.get('/users/{user_id}', response_model=UserPublic)
-def ver_user_test(user_id: int):
-    if user_id > len(database) or user_id < 1:
-        raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND,
-              detail='Usuário não existe'
-        )
-    return database[user_id - 1]
+    return {'message': 'User deleted!'}
 
 
 @app.post('/auth')
-def retrive_token(
+def retrieve_token(
     dados_form: OAuth2PasswordRequestForm = Depends(),
-    session: Session = Depends(get_session)
+    session: Session = Depends(get_session),
 ):
 
-    user = session.scalar(select(user). where(User.email == dados_form.username))
+    user = session.scalar(
+        select(User).where(User.email == dados_form.username)
+    )
 
     if not user:
         raise HTTPException(
-            HTTPStatus.UNAUTHORIZED,
-            detail='esse email não existe'
+            HTTPStatus.UNAUTHORIZED, detail='Esse email não existe'
         )
 
-    if not verify_paasword(dados_form.password, user.password):
+    if not verify_password(dados_form.password, user.password):
         raise HTTPException(
-            HTTPStatus.UNAUTHORIZED,
-            detail='Email ou senha incorretos'
+            HTTPStatus.UNAUTHORIZED, detail='Email ou senha incorretos'
         )
-    Token_access = create_token_access(dados={'sub': user.email})
-    return {'access_token': create_token_access, 'token_type': 'bearer'}
+
+    token_acesso = create_token(dados={'sub': user.email})
+    return {'access_token': token_acesso, 'token_type': 'bearer'}
+
+
+@app.post('/story', status_code=HTTPStatus.CREATED, response_model=StoryPublic)
+def create_story(
+    story: StorySchema,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+
+    new_story = Story(
+        author=story.author, title=story.title, story=story.story
+    )
+
+    new_story.email = user.email
+
+    session.add(new_story)
+    session.commit()
+    session.refresh(new_story)
+
+    return new_story

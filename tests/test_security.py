@@ -1,14 +1,14 @@
 from jwt import decode
 
-from viajei_api.security import SECRET_KEY, create_token_access
+from viajei_api.security import CHAVE_SECRETA, create_token
 
 
 def test_jwt():
 
     data = {'test': 'test'}
-    token = create_token_access(data)
+    token = create_token(data)
 
-    decoded = decode(token, SECRET_KEY, algorithms=['HS256'])
+    decoded = decode(token, CHAVE_SECRETA, algorithms=['HS256'])
 
     assert decoded['test'] == data['test']
     assert 'exp' in decoded
